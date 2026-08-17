@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>正文复制页</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    background: #f4f6f8;
+    color: #24292f;
+    line-height: 1.7;
+    padding: 24px;
+  }
+  .page { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  .subtitle { color: #6a737d; font-size: 13px; margin-bottom: 20px; }
+  .toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    gap: 12px;
+  }
+  .toolbar .hint { font-size: 12px; color: #6a737d; }
+  .btn {
+    border: none;
+    border-radius: 6px;
+    padding: 7px 16px;
+    font-size: 13px;
+    cursor: pointer;
+    background: #0969da;
+    color: #fff;
+    transition: background .15s;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #0a58b5; }
+  .btn.done { background: #1a7f37; }
+  .text-block {
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+    position: relative;
+  }
+  .text-block .block-actions {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .toast {
+    position: fixed;
+    left: 50%;
+    bottom: 32px;
+    transform: translateX(-50%) translateY(20px);
+    background: #1f2328;
+    color: #fff;
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s, transform .2s;
+  }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .group-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 14px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .group-title .count { font-size: 12px; color: #6a737d; font-weight: normal; }
+  .file-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    background: #fff;
+    border: 1px solid #eaeef2;
+    border-radius: 8px;
+    margin-bottom: 6px;
+    flex-wrap: wrap;
+  }
+  .file-info { min-width: 0; flex: 1; }
+  .file-name { font-weight: 600; word-break: break-all; font-size: 13.5px; }
+  .file-meta { font-size: 12px; color: #6a737d; }
+  .file-hash { font-size: 11px; color: #6a737d; word-break: break-all; margin-top: 2px; }
+  .file-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .file-actions .btn { padding: 5px 12px; font-size: 12.5px; }
+  .upload-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .upload-tip { font-size: 12px; color: #6a737d; }
+  .upload-progress {
+    height: 6px;
+    background: #eaeef2;
+    border-radius: 3px;
+    overflow: hidden;
+    margin-top: 10px;
+    display: none;
+  }
+  .upload-progress-bar { height: 100%; width: 0%; background: #0969da; transition: width .2s; }
+  @media (max-width: 560px) {
+    body { padding: 12px; }
+    .file-actions { width: 100%; justify-content: flex-end; }
+    .upload-bar .btn { flex: 1; }
+    .speed-row { gap: 8px; }
+  }
+  .speed-card {
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+  .speed-title { font-weight: 600; margin-bottom: 8px; }
+  .speed-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+    flex-wrap: wrap;
+  }
+  .speed-result { font-size: 13px; color: #24292f; min-width: 0; }
+  .sel {
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 13px;
+    background: #fff;
+  }
+  .host-input {
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 13px;
+    width: 140px;
+  }
+  .speed-meter {
+    height: 6px;
+    background: #eaeef2;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .meter-bar {
+    height: 100%;
+    width: 0%;
+    background: #0969da;
+    transition: width .2s;
+  }
+  .speed-chart {
+    display: block;
+    width: 100%;
+    height: 130px;
+    margin-top: 10px;
+  }
+  .speed-meta { font-size: 12px; color: #6a737d; margin-top: 6px; }
+  .chart-tip {
+    position: fixed;
+    pointer-events: none;
+    background: #1f2328;
+    color: #fff;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+    opacity: 0;
+    transition: opacity .1s;
+    z-index: 10;
+  }
+  .chart-tip.show { opacity: 1; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>正文复制页</h1>
+  <p class="subtitle">打开该文件，在下方 &lt;main&gt; 里修改正文内容即可，保存后虚拟机刷新页面生效</p>
+
+  <div class="toolbar">
+    <span class="hint">共 <span id="blockCount">0</span> 段</span>
+    <button class="btn" id="copyAll">全部复制</button>
+  </div>
+
+  <!-- ============ 正文区域：修改这里的内容 ============ -->
+  <!-- 每段放在一个 <section class="text-block"> 里；想加段落就复制一整段，想删就删掉整段 -->
+  <main id="content">
+    <section class="text-block">
+      第二段正文实例：复制按钮会把本段文字复制到剪贴板，虚拟机浏览器同样支持。
+    </section>
+
+    <section class="text-block">
+      第二段正文示例：复制按钮会把本段文字复制到剪贴板，虚拟机浏览器同样支持。
+      <br>1.注意：如果你在虚拟机里使用浏览器访问本页面，复制按钮同样可用。
+      <br>2.注意：如果你在虚拟机里使用浏览器访问本页面，复制按钮同样可用。
+    </section>
+
+    <section class="text-block">
+      第三段正文示例：复制按钮会把本段文字复制到剪贴板，虚拟机浏览器同样支持。
+    </section>
+  </main>
+  <!-- ============ 正文区域结束 ============ -->
+
+  <hr style="border:none; border-top:1px solid #d0d7de; margin:28px 0 20px;">
+
+  <!-- ============ 下载区：支持子文件夹（最深 3 层），也可用下方上传区添加文件 ============ -->
+  <h2 style="font-size:17px; margin-bottom:8px;">下载区</h2>
+  <p class="subtitle">文件放在 index.html 同目录（支持子文件夹，最深 3 层）或使用下方上传，刷新页面后自动列出</p>
+  <div id="fileGroups">
+    <div class="text-block" style="color:#6a737d; font-size:13px; text-align:center; padding:18px;">加载中...</div>
+  </div>
+  <!-- ============ 下载区结束 ============ -->
+
+  <hr style="border:none; border-top:1px solid #d0d7de; margin:28px 0 20px;">
+
+  <!-- ============ 上传回传区 ============ -->
+  <h2 style="font-size:17px; margin-bottom:8px;">上传回传</h2>
+  <p class="subtitle">把文件上传到服务器共享目录（新系统 → 主机方向传输），上传后自动出现在下载区</p>
+  <div class="upload-bar">
+    <button class="btn" id="pickFiles">选择文件（可多选）</button>
+    <button class="btn" id="pickFolder">选择文件夹</button>
+    <input type="file" id="fileInput" multiple style="display:none;">
+    <input type="file" id="dirInput" webkitdirectory multiple style="display:none;">
+    <span class="upload-tip" id="uploadResult"></span>
+  </div>
+  <div class="upload-progress"><div class="upload-progress-bar" id="uploadBar"></div></div>
+  <!-- ============ 上传回传区结束 ============ -->
+
+  <hr style="border:none; border-top:1px solid #d0d7de; margin:28px 0 20px;">
+
+  <!-- ============ 网速测试区 ============ -->
+  <h2 style="font-size:17px; margin-bottom:8px;">网速测试</h2>
+  <p class="subtitle">测的是「当前浏览器 → 本服务器」的真实链路。测试期间请勿进行其他大流量操作。</p>
+
+  <div class="speed-card">
+    <div class="speed-title">延迟（Ping）</div>
+    <div class="speed-row">
+      <button class="btn" id="pingLocalBtn">测本服务器延迟</button>
+      <span class="speed-result" id="pingLocalResult">-</span>
+    </div>
+    <div class="speed-row">
+      <select class="sel" id="extHost"></select>
+      <input class="host-input" id="extHostCustom" placeholder="自定义域名如 example.com">
+      <button class="btn" id="pingExtBtn">测外网延迟</button>
+      <span class="speed-result" id="pingExtResult">-</span>
+    </div>
+  </div>
+
+  <div class="speed-card">
+    <div class="speed-title">下载速度</div>
+    <div class="speed-row">
+      <label style="font-size:13px; color:#6a737d;">时长</label>
+      <select class="sel" id="dlSecs">
+        <option value="5">5 秒</option>
+        <option value="10" selected>10 秒</option>
+        <option value="30">30 秒</option>
+      </select>
+      <button class="btn" id="dlBtn">开始下载测速</button>
+      <span class="speed-result" id="dlResult">-</span>
+    </div>
+    <div class="speed-meter"><div class="meter-bar" id="dlBar"></div></div>
+    <canvas class="speed-chart" id="dlChart"></canvas>
+    <div class="speed-meta" id="dlMeta"></div>
+  </div>
+
+  <div class="speed-card">
+    <div class="speed-title">上传速度</div>
+    <div class="speed-row">
+      <label style="font-size:13px; color:#6a737d;">时长</label>
+      <select class="sel" id="ulSecs">
+        <option value="5">5 秒</option>
+        <option value="10" selected>10 秒</option>
+        <option value="30">30 秒</option>
+      </select>
+      <button class="btn" id="ulBtn">开始上传测速</button>
+      <span class="speed-result" id="ulResult">-</span>
+    </div>
+    <div class="speed-meter"><div class="meter-bar" id="ulBar"></div></div>
+    <canvas class="speed-chart" id="ulChart"></canvas>
+    <div class="speed-meta" id="ulMeta"></div>
+  </div>
+  <!-- ============ 网速测试区结束 ============ -->
+
+  <p class="subtitle">提示：编辑保存后，虚拟机里按 Ctrl+F5（强制刷新）即可看到新内容</p>
+</div>
+
+<div class="toast" id="toast"></div>
+<div class="chart-tip" id="chartTip"></div>
+
+<script>
+  // 复制文本到剪贴板（局域网 http 下 navigator.clipboard 不可用，
+  // 因此使用隐藏 textarea + execCommand 方案，任何浏览器都稳定可用）
+  function copyText(text) {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    ta.style.pointerEvents = 'none'
+    document.body.appendChild(ta)
+    ta.focus()
+    ta.select()
+    ta.setSelectionRange(0, ta.value.length)
+    let ok = false
+    try {
+      ok = document.execCommand('copy')
+    } catch (e) {
+      ok = false
+    }
+    document.body.removeChild(ta)
+    return ok
+  }
+
+  let toastTimer = null
+  function showToast(msg) {
+    const el = document.getElementById('toast')
+    el.textContent = msg
+    el.classList.add('show')
+    clearTimeout(toastTimer)
+    toastTimer = setTimeout(() => el.classList.remove('show'), 1600)
+  }
+
+  // 取某段的纯文本（只取直接文本节点，忽略按钮文字，空白归一）
+  function extractText(block) {
+    return Array.from(block.childNodes)
+      .filter(n => n.nodeType === Node.TEXT_NODE)
+      .map(n => n.textContent)
+      .join('')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  // 为每段附加复制按钮
+  const blocks = Array.from(document.querySelectorAll('.text-block'))
+  document.getElementById('blockCount').textContent = blocks.length
+
+  blocks.forEach(block => {
+    const wrap = document.createElement('div')
+    wrap.className = 'block-actions'
+    const btn = document.createElement('button')
+    btn.className = 'btn'
+    btn.textContent = '复制'
+    btn.addEventListener('click', () => {
+      const text = extractText(block)
+      if (!text) return
+      if (copyText(text)) {
+        btn.textContent = '已复制✓'
+        btn.classList.add('done')
+        setTimeout(() => {
+          btn.textContent = '复制'
+          btn.classList.remove('done')
+        }, 1500)
+      } else {
+        showToast('复制失败，请手动全选复制')
+      }
+    })
+    wrap.appendChild(btn)
+    block.appendChild(wrap)
+  })
+
+  document.getElementById('copyAll').addEventListener('click', () => {
+    const all = blocks.map(extractText).filter(Boolean).join('\n\n')
+    if (!all) return
+    if (copyText(all)) {
+      showToast('已复制全部内容 ✓')
+    } else {
+      showToast('复制失败，请手动全选复制')
+    }
+  })
+
+  // ============ 下载区：目录树分组渲染 + 哈希/预览 ============
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    if (bytes < 1024 * 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1) + ' MB'
+    return (bytes / 1024 / 1024 / 1024).toFixed(2) + ' GB'
+  }
+
+  // 把目录树平铺为 [{ group, path, name, size }]，group = 顶层目录名
+  function flattenTree(tree) {
+    const out = []
+    function walk(node, prefix, topGroup) {
+      for (const f of node.files || []) {
+        out.push({ group: topGroup || '根目录', path: prefix ? prefix + '/' + f.name : f.name, name: f.name, size: f.size })
+      }
+      for (const d of node.dirs || []) {
+        walk(d, prefix ? prefix + '/' + d.name : d.name, topGroup || d.name)
+      }
+    }
+    walk(tree, '', '')
+    return out
+  }
+
+  function renderFileRow(f) {
+    const row = document.createElement('div')
+    row.className = 'file-row'
+    const info = document.createElement('div')
+    info.className = 'file-info'
+    const nameEl = document.createElement('div')
+    nameEl.className = 'file-name'
+    nameEl.textContent = f.path
+    const metaEl = document.createElement('div')
+    metaEl.className = 'file-meta'
+    metaEl.textContent = formatSize(f.size)
+    const hashEl = document.createElement('div')
+    hashEl.className = 'file-hash'
+    info.appendChild(nameEl)
+    info.appendChild(metaEl)
+    info.appendChild(hashEl)
+
+    const actions = document.createElement('div')
+    actions.className = 'file-actions'
+    const dl = document.createElement('a')
+    dl.className = 'btn'
+    dl.textContent = '下载'
+    dl.href = '/download/' + encodeURIComponent(f.path)
+    dl.style.textDecoration = 'none'
+    dl.addEventListener('click', () => showToast('开始下载 ' + f.name))
+    const hashBtn = document.createElement('button')
+    hashBtn.className = 'btn'
+    hashBtn.style.background = '#eaeef2'
+    hashBtn.style.color = '#24292f'
+    hashBtn.textContent = 'SHA256'
+    hashBtn.addEventListener('click', async () => {
+      hashBtn.disabled = true
+      hashBtn.textContent = '计算中...'
+      try {
+        const res = await fetch('/hash/' + encodeURIComponent(f.path), { cache: 'no-store' })
+        const json = await res.json()
+        if (json.success && json.data) {
+          hashEl.textContent = 'SHA256: ' + json.data.sha256
+          if (copyText(json.data.sha256)) showToast('哈希已复制 ✓')
+        } else {
+          hashEl.textContent = '哈希计算失败'
+        }
+      } catch (e) {
+        hashEl.textContent = '哈希计算失败'
+      }
+      hashBtn.disabled = false
+      hashBtn.textContent = 'SHA256'
+    })
+    const prevBtn = document.createElement('a')
+    prevBtn.className = 'btn'
+    prevBtn.style.background = '#eaeef2'
+    prevBtn.style.color = '#24292f'
+    prevBtn.textContent = '预览'
+    prevBtn.href = '/preview/' + encodeURIComponent(f.path)
+    prevBtn.target = '_blank'
+    prevBtn.rel = 'noopener'
+    prevBtn.style.textDecoration = 'none'
+    actions.appendChild(dl)
+    actions.appendChild(hashBtn)
+    actions.appendChild(prevBtn)
+    row.appendChild(info)
+    row.appendChild(actions)
+    return row
+  }
+
+  async function loadDownloads() {
+    const root = document.getElementById('fileGroups')
+    try {
+      const res = await fetch('/files')
+      const json = await res.json()
+      const all = flattenTree(json.data || { files: [], dirs: [] })
+      root.innerHTML = ''
+      if (!all.length) {
+        root.innerHTML = '<div class="text-block" style="color:#6a737d; font-size:13px; text-align:center; padding:18px;">暂无可下载文件（把文件放进 index.html 同目录，或用上方上传）</div>'
+        return
+      }
+      const groups = new Map()
+      for (const f of all) {
+        if (!groups.has(f.group)) groups.set(f.group, [])
+        groups.get(f.group).push(f)
+      }
+      for (const [group, files] of groups) {
+        const title = document.createElement('div')
+        title.className = 'group-title'
+        title.textContent = group
+        const count = document.createElement('span')
+        count.className = 'count'
+        count.textContent = files.length + ' 个文件'
+        title.appendChild(count)
+        root.appendChild(title)
+        for (const f of files) root.appendChild(renderFileRow(f))
+      }
+    } catch (e) {
+      root.innerHTML = '<div class="text-block" style="color:#cf222e; font-size:13px; text-align:center; padding:18px;">下载列表加载失败：' + e + '</div>'
+    }
+  }
+  loadDownloads()
+
+  // ============ 上传回传：多选/整文件夹，逐文件 PUT（进度条） ============
+  const pickFilesBtn = document.getElementById('pickFiles')
+  const pickFolderBtn = document.getElementById('pickFolder')
+  const fileInput = document.getElementById('fileInput')
+  const dirInput = document.getElementById('dirInput')
+  pickFilesBtn.addEventListener('click', () => fileInput.click())
+  pickFolderBtn.addEventListener('click', () => dirInput.click())
+
+  function doUpload(fileList) {
+    const files = Array.from(fileList)
+    if (!files.length) return
+    const totalBytes = files.reduce((a, f) => a + f.size, 0)
+    const progressWrap = document.querySelector('.upload-progress')
+    const bar = document.getElementById('uploadBar')
+    const resultEl = document.getElementById('uploadResult')
+    progressWrap.style.display = 'block'
+    bar.style.width = '0%'
+    let doneBytes = 0
+    let okCount = 0
+    const failed = []
+    let cancelled = false
+
+    // 串行逐个上传（保持服务器写入简单，局域网吞吐足够）
+    const queue = files.slice()
+    const next = () => {
+      if (cancelled || !queue.length) {
+        progressWrap.style.display = 'none'
+        resultEl.textContent = cancelled
+          ? '已取消'
+          : (failed.length ? '完成：成功 ' + okCount + ' 个，失败 ' + failed.length + ' 个（' + failed.slice(0, 3).join('、') + '）'
+            : '已上传 ' + okCount + ' 个文件 ✓')
+        if (okCount > 0) loadDownloads()
+        return
+      }
+      const f = queue.shift()
+      const rel = f.webkitRelativePath || f.name
+      resultEl.textContent = '上传中 (' + (files.length - queue.length) + '/' + files.length + ') ' + rel
+      const xhr = new XMLHttpRequest()
+      xhr.open('PUT', '/upload/' + encodeURIComponent(rel))
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) {
+          const cur = doneBytes + e.loaded
+          bar.style.width = Math.round(cur / totalBytes * 100) + '%'
+        }
+      }
+      xhr.onload = () => {
+        doneBytes += f.size
+        if (xhr.status === 200) okCount++
+        else failed.push(rel)
+        next()
+      }
+      xhr.onerror = () => { doneBytes += f.size; failed.push(rel); next() }
+      xhr.send(f)
+    }
+    next()
+  }
+  fileInput.addEventListener('change', (e) => { doUpload(e.target.files); e.target.value = '' })
+  dirInput.addEventListener('change', (e) => { doUpload(e.target.files); e.target.value = '' })
+
+  // ============ 网速测试 ============
+  const $ = (id) => document.getElementById(id)
+
+  function fmtMbps(mbps) {
+    return mbps.toFixed(1) + ' Mbps（' + (mbps / 8).toFixed(1) + ' MB/s）'
+  }
+
+  // 速率换算：bytes 字节数 / elapsedMs 毫秒 → Mbps
+  function calcMbps(bytes, elapsedMs) {
+    return bytes * 8 * 1000 / elapsedMs / 1e6
+  }
+
+  // 本服务器延迟：5 次 HTTP 往返取 min/avg/max
+  let pingLocalBusy = false
+  $('pingLocalBtn').addEventListener('click', async () => {
+    if (pingLocalBusy) return
+    pingLocalBusy = true
+    const btn = $('pingLocalBtn')
+    btn.disabled = true
+    btn.textContent = '测试中…'
+    $('pingLocalResult').textContent = '测试中…'
+    const times = []
+    let fails = 0
+    for (let i = 0; i < 5; i++) {
+      const t0 = performance.now()
+      try {
+        await fetch('/ping', { cache: 'no-store' })
+        times.push(performance.now() - t0)
+      } catch (e) {
+        fails++
+      }
+    }
+    if (times.length) {
+      const min = Math.min(...times)
+      const avg = times.reduce((a, b) => a + b, 0) / times.length
+      const max = Math.max(...times)
+      $('pingLocalResult').textContent = 'min ' + min.toFixed(0) + ' / avg ' + avg.toFixed(0) +
+        ' / max ' + max.toFixed(0) + ' ms' + (fails ? '（' + fails + ' 次失败）' : '')
+    } else {
+      $('pingLocalResult').textContent = '全部失败'
+    }
+    btn.disabled = false
+    btn.textContent = '测本服务器延迟'
+    pingLocalBusy = false
+  })
+
+  // 外网延迟：由服务器代理 TCP 握手
+  const EXTERNAL_HOSTS = ['baidu.com', 'qq.com', 'aliyun.com', 'taobao.com']
+  const extSel = $('extHost')
+  EXTERNAL_HOSTS.forEach(h => {
+    const o = document.createElement('option')
+    o.value = h
+    o.textContent = h
+    extSel.appendChild(o)
+  })
+  let pingExtBusy = false
+  $('pingExtBtn').addEventListener('click', async () => {
+    if (pingExtBusy) return
+    pingExtBusy = true
+    const btn = $('pingExtBtn')
+    btn.disabled = true
+    btn.textContent = '测试中…'
+    const host = $('extHostCustom').value.trim() || extSel.value
+    $('pingExtResult').textContent = '测试中…'
+    try {
+      const res = await fetch('/ping-external?host=' + encodeURIComponent(host), { cache: 'no-store' })
+      const data = await res.json()
+      if (data.error) {
+        $('pingExtResult').textContent = '无效的域名'
+      } else {
+        $('pingExtResult').textContent = host + '：' + (data.ms === null ? '超时或不可达' : data.ms + ' ms')
+      }
+    } catch (e) {
+      $('pingExtResult').textContent = '请求失败：' + e
+    }
+    btn.disabled = false
+    btn.textContent = '测外网延迟'
+    pingExtBusy = false
+  })
+
+  // ============ 速度曲线图（零依赖 canvas 手绘） ============
+  function niceCeil(v) {
+    const pow = Math.pow(10, Math.floor(Math.log10(v)))
+    if (v <= pow) return pow
+    if (v <= 2 * pow) return 2 * pow
+    if (v <= 5 * pow) return 5 * pow
+    return 10 * pow
+  }
+  function niceStep(v) {
+    const pow = Math.pow(10, Math.floor(Math.log10(v)))
+    for (const m of [1, 2, 5, 10]) {
+      if (v <= m * pow) return m * pow
+    }
+    return 10 * pow
+  }
+
+  // points: [{tSec, mbps}]，color 为折线主色，悬停显示该点速率
+  function drawChart(canvas, points, color) {
+    const tip = document.getElementById('chartTip')
+    const dpr = window.devicePixelRatio || 1
+    const w = canvas.clientWidth || 320
+    const h = 130
+    canvas.width = Math.round(w * dpr)
+    canvas.height = Math.round(h * dpr)
+    canvas.style.width = w + 'px'
+    canvas.style.height = h + 'px'
+    const ctx = canvas.getContext('2d')
+    ctx.scale(dpr, dpr)
+
+    const mL = 40, mR = 8, mT = 10, mB = 22
+    const pw = w - mL - mR
+    const ph = h - mT - mB
+    const maxY = points.length ? Math.max(niceCeil(Math.max(...points.map(p => p.mbps)) * 1.15), 1) : 1
+    const maxX = points.length ? Math.max(points[points.length - 1].tSec, 1) : 1
+    const px = (t) => mL + t / maxX * pw
+    const py = (v) => mT + ph - v / maxY * ph
+
+    const render = (idx) => {
+      ctx.clearRect(0, 0, w, h)
+      if (points.length < 2) {
+        ctx.fillStyle = '#6a737d'
+        ctx.font = '12px sans-serif'
+        ctx.textAlign = 'center'
+        ctx.fillText('数据不足，无法绘制曲线', w / 2, h / 2)
+        return
+      }
+      ctx.strokeStyle = '#eaeef2'
+      ctx.fillStyle = '#6a737d'
+      ctx.font = '10px sans-serif'
+      ctx.textAlign = 'right'
+      for (let i = 0; i <= 4; i++) {
+        const v = maxY * i / 4
+        const y = py(v)
+        ctx.beginPath()
+        ctx.moveTo(mL, y)
+        ctx.lineTo(w - mR, y)
+        ctx.stroke()
+        ctx.fillText(v.toFixed(0), mL - 4, y + 3)
+      }
+      ctx.textAlign = 'center'
+      const step = niceStep(maxX / 4)
+      for (let t = 0; t <= maxX + 1e-9; t += step) {
+        ctx.beginPath()
+        ctx.moveTo(px(t), mT + ph)
+        ctx.lineTo(px(t), mT + ph + 4)
+        ctx.stroke()
+        ctx.fillText(t.toFixed(0) + 's', px(t), h - 6)
+      }
+      const last = points[points.length - 1]
+      const grad = ctx.createLinearGradient(0, mT, 0, mT + ph)
+      grad.addColorStop(0, color + '45')
+      grad.addColorStop(1, color + '05')
+      ctx.beginPath()
+      points.forEach((p, i) => {
+        i === 0 ? ctx.moveTo(px(p.tSec), py(p.mbps)) : ctx.lineTo(px(p.tSec), py(p.mbps))
+      })
+      ctx.lineTo(px(last.tSec), py(0))
+      ctx.lineTo(px(points[0].tSec), py(0))
+      ctx.closePath()
+      ctx.fillStyle = grad
+      ctx.fill()
+      ctx.beginPath()
+      points.forEach((p, i) => {
+        i === 0 ? ctx.moveTo(px(p.tSec), py(p.mbps)) : ctx.lineTo(px(p.tSec), py(p.mbps))
+      })
+      ctx.strokeStyle = color
+      ctx.lineWidth = 2
+      ctx.lineJoin = 'round'
+      ctx.stroke()
+
+      if (idx >= 0 && points[idx]) {
+        const p = points[idx]
+        ctx.beginPath()
+        ctx.moveTo(px(p.tSec), mT)
+        ctx.lineTo(px(p.tSec), mT + ph)
+        ctx.strokeStyle = 'rgba(31,35,40,0.35)'
+        ctx.lineWidth = 1
+        ctx.stroke()
+        ctx.beginPath()
+        ctx.arc(px(p.tSec), py(p.mbps), 4, 0, Math.PI * 2)
+        ctx.fillStyle = color
+        ctx.fill()
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+      } else {
+        let peak = points[0]
+        points.forEach(p => { if (p.mbps > peak.mbps) peak = p })
+        ctx.beginPath()
+        ctx.arc(px(peak.tSec), py(peak.mbps), 3.5, 0, Math.PI * 2)
+        ctx.fillStyle = '#cf222e'
+        ctx.fill()
+        ctx.strokeStyle = '#fff'
+        ctx.lineWidth = 1.5
+        ctx.stroke()
+      }
+    }
+
+    render(-1)
+    canvas.onmousemove = (e) => {
+      const rect = canvas.getBoundingClientRect()
+      const t = (e.clientX - rect.left) / pw * maxX
+      let best = 0
+      let bestD = Infinity
+      points.forEach((p, i) => {
+        const d = Math.abs(p.tSec - t)
+        if (d < bestD) { bestD = d; best = i }
+      })
+      render(best)
+      const p = points[best]
+      tip.textContent = '第 ' + p.tSec.toFixed(1) + ' 秒 · ' + p.mbps.toFixed(1) + ' Mbps'
+      tip.style.left = (e.clientX + 12) + 'px'
+      tip.style.top = (e.clientY - 34) + 'px'
+      tip.classList.add('show')
+    }
+    canvas.onmouseleave = () => {
+      render(-1)
+      tip.classList.remove('show')
+    }
+  }
+
+  // 采样点 → 区间速率曲线数据
+  function samplesToPoints(samples) {
+    const points = []
+    for (let i = 1; i < samples.length; i++) {
+      const dt = samples[i].t - samples[i - 1].t
+      if (dt <= 0) continue
+      points.push({
+        tSec: samples[i].t / 1000,
+        mbps: (samples[i].bytes - samples[i - 1].bytes) * 8 * 1000 / dt / 1e6,
+      })
+    }
+    return points
+  }
+
+  // 下载测速：循环拉取 16MB 块直至跑满时长，每 500ms 刷新实时速率
+  let dlBusy = false
+  $('dlBtn').addEventListener('click', () => {
+    if (dlBusy) return
+    dlBusy = true
+    const btn = $('dlBtn')
+    const bar = $('dlBar')
+    const res = $('dlResult')
+    btn.disabled = true
+    btn.textContent = '测试中…'
+    res.textContent = '实时 0.0 Mbps（0.0 MB/s）'
+    bar.style.width = '0%'
+    const dur = parseInt($('dlSecs').value, 10) * 1000
+    const t0 = performance.now()
+    let baseBytes = 0
+    const samples = []
+    const controller = new AbortController()
+
+    const finish = () => {
+      if (!dlBusy) return
+      dlBusy = false
+      clearInterval(timer)
+      btn.disabled = false
+      btn.textContent = '开始下载测速'
+      const elapsed = (performance.now() - t0) / 1000
+      samples.push({ t: elapsed, bytes: baseBytes })
+      const points = samplesToPoints(samples)
+      let peakMbps = 0
+      points.forEach(p => { if (p.mbps > peakMbps) peakMbps = p.mbps })
+      res.textContent = '平均 ' + fmtMbps(baseBytes * 8 / elapsed / 1e6) +
+        '，峰值 ' + fmtMbps(peakMbps)
+      $('dlMeta').textContent = '本次流量：' + (baseBytes / 1024 / 1024).toFixed(1) + ' MB'
+      drawChart($('dlChart'), points, '#0969da')
+      bar.style.width = '100%'
+    }
+
+    const timer = setInterval(() => {
+      const elapsed = performance.now() - t0
+      if (elapsed >= dur) { finish(); return }
+      samples.push({ t: elapsed, bytes: baseBytes })
+      bar.style.width = Math.min(100, elapsed / dur * 100) + '%'
+      res.textContent = '实时 ' + fmtMbps(calcMbps(baseBytes, elapsed))
+    }, 500)
+
+    // 流式下载：边读边丢，内存驻留仅一个 256KB 块
+    const run = async () => {
+      try {
+        const resp = await fetch('/speedtest?size=2048', { signal: controller.signal })
+        if (!resp.ok || !resp.body) { res.textContent = '下载失败，已中止'; return }
+        const reader = resp.body.getReader()
+        while (dlBusy) {
+          if (performance.now() - t0 >= dur) break
+          const { done, value } = await reader.read()
+          if (done) break
+          baseBytes += value.byteLength
+        }
+        controller.abort()
+      } catch (e) {
+        // 正常中止或连接中断
+      } finally {
+        finish()
+      }
+    }
+    run()
+  })
+
+  // 上传测速：循环上传 4MB 随机块直至跑满时长
+  const UL_BLOCK = 4 * 1024 * 1024
+  let ulBusy = false
+  $('ulBtn').addEventListener('click', () => {
+    if (ulBusy) return
+    ulBusy = true
+    const btn = $('ulBtn')
+    const bar = $('ulBar')
+    const res = $('ulResult')
+    btn.disabled = true
+    btn.textContent = '测试中…'
+    res.textContent = '实时 0.0 Mbps（0.0 MB/s）'
+    bar.style.width = '0%'
+    const dur = parseInt($('ulSecs').value, 10) * 1000
+    const t0 = performance.now()
+    let baseBytes = 0
+    const samples = []
+    const controller = new AbortController()
+    // 复用同一份数据：Blob 只读，可反复发送，不产生新分配
+    const blob = new Blob([new Uint8Array(UL_BLOCK)])
+
+    const finish = () => {
+      if (!ulBusy) return
+      ulBusy = false
+      clearInterval(timer)
+      btn.disabled = false
+      btn.textContent = '开始上传测速'
+      const elapsed = (performance.now() - t0) / 1000
+      samples.push({ t: elapsed, bytes: baseBytes })
+      const points = samplesToPoints(samples)
+      let peakMbps = 0
+      points.forEach(p => { if (p.mbps > peakMbps) peakMbps = p.mbps })
+      res.textContent = '平均 ' + fmtMbps(baseBytes * 8 / elapsed / 1e6) +
+        '，峰值 ' + fmtMbps(peakMbps)
+      $('ulMeta').textContent = '本次流量：' + (baseBytes / 1024 / 1024).toFixed(1) + ' MB'
+      drawChart($('ulChart'), points, '#1a7f37')
+      bar.style.width = '100%'
+    }
+
+    const timer = setInterval(() => {
+      const elapsed = performance.now() - t0
+      if (elapsed >= dur) { finish(); return }
+      samples.push({ t: elapsed, bytes: baseBytes })
+      bar.style.width = Math.min(100, elapsed / dur * 100) + '%'
+      res.textContent = '实时 ' + fmtMbps(calcMbps(baseBytes, elapsed))
+    }, 500)
+
+    const run = async () => {
+      try {
+        while (ulBusy) {
+          if (performance.now() - t0 >= dur) break
+          const res = await fetch('/upload-test', { method: 'POST', body: blob, signal: controller.signal })
+          if (!res.ok) break
+          baseBytes += UL_BLOCK
+        }
+        controller.abort()
+      } catch (e) {
+        // 正常中止或连接中断
+      } finally {
+        finish()
+      }
+    }
+    run()
+  })
+</script>
+</body>
+</html>
