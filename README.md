@@ -2,7 +2,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/tanhx-boy/LanBridge)](https://github.com/tanhx-boy/LanBridge/releases)
 [![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](https://github.com/tanhx-boy/LanBridge/releases)
 
-> ⚠️ **AI 生成声明**：本项目的全部代码与文档由作者与 AI 协作完成，使用 [opencode](https://github.com/sst/opencode) CLI + [openrouter](https://openrouter.ai/) 的免费 API。代码已通过构建与功能测试，但**不保证完全无 bug**，使用前请自行评估与审查。
+> ⚠️ **AI 生成声明**：本项目的全部代码与文档由作者与 AI 协作完成，使用 [opencode](https://github.com/sst/opencode) Desktop + [openrouter](https://openrouter.ai/) 的免费 API。代码已通过构建与功能测试，但**不保证完全无 bug**，使用前请自行评估与审查。
 
 # LanBridge
 
