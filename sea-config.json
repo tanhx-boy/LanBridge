@@ -1,0 +1,8 @@
+{
+  "main": "server.js",
+  "output": "webshare.exe",
+  "disableExperimentalSEAWarning": true,
+  "assets": {
+    "index.html": "index.html"
+  }
+}

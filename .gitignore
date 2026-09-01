@@ -1,0 +1,40 @@
+# Node / npm（项目零依赖，但保留以防未来）
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+
+# SEA 构建产物
+webshare.exe
+webshare
+sea-prep.blob
+*.exe
+!build.bat
+
+# 运行时数据（用户数据 + 调试日志）
+share/
+chat-img/
+error.log
+
+# 操作系统 / 编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.vs/
+
+# 临时文件
+*.tmp
+*.bak
+.tmp/
+
+# 环境
+.env
+.env.local
+.env.*.local
