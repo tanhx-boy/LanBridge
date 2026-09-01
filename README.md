@@ -1,6 +1,10 @@
-# web-copy-share
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![GitHub release](https://img.shields.io/github/v/release/tanhx-boy/LanBridge)](../../releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](../../releases)
 
-零依赖的局域网文件共享 / 聊天 / 测速一体化网页。基于 Node.js 内置模块运行，可打包成单个 `webshare.exe` 在无 Node 环境的 Windows x64 上运行。
+# LanBridge
+
+一款**轻便的、基于浏览器**的局域网工具，用于局域网内的**文件与文字共享**，同时提供一个**测速**功能。基于 Node.js 内置模块运行，可打包成单个 `webshare.exe` 在无 Node 环境的 Windows x64 上运行。
 
 > MIT License · 跨平台源码 · 仅发布 x64 Windows 预编译产物
 
@@ -8,7 +12,7 @@
 
 ## 项目简介
 
-`web-copy-share` 是一个**自包含**的局域网服务，把一台机器变成一个可被同网段其他设备访问的网页。典型场景：
+LanBridge 是一款**轻便的、基于浏览器**的局域网工具，用于局域网内的**文件与文字共享**，同时提供**网速测试**功能。典型场景：
 
 - 主机跑服务，VM / 手机 / 同事电脑浏览器打开就能用
 - 临时分享文件、剪贴板、聊天，不想搭 FTP / 装 IM
@@ -52,7 +56,7 @@
 
 ```bash
 git clone <repo-url>
-cd web-copy-share
+cd LanBridge
 node server.js
 ```
 
@@ -201,7 +205,7 @@ const SELF_FILES = new Set([
 
 | 现象 | 解决办法 |
 | --- | --- |
-| 虚拟机打不开、转圈超时 | ① VM 网络必须是**桥接模式**（NAT 模式访问不到宿主机）② Windows 防火墙首次会拦截，放行 node.exe 或入站 TCP 24496 端口（`netsh advfirewall firewall add rule name="web-copy-share" dir=in action=allow protocol=TCP localport=24496`） |
+| 虚拟机打不开、转圈超时 | ① VM 网络必须是**桥接模式**（NAT 模式访问不到宿主机）② Windows 防火墙首次会拦截，放行 node.exe 或入站 TCP 24496 端口（`netsh advfirewall firewall add rule name="LanBridge" dir=in action=allow protocol=TCP localport=24496`） |
 | 页面能开但复制没反应 | 这是浏览器限制（HTTP 非安全上下文），换用页面上的"复制"按钮（已做兼容处理）；若仍失败请手动全选复制 |
 
 ---

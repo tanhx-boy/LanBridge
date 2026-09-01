@@ -1,4 +1,4 @@
-// WebShare 静态服务（零依赖，仅 Node 内置模块）
+// LanBridge 静态服务（零依赖，仅 Node 内置模块）
 // 支持两种运行模式：
 //   1) 开发模式：node server.js  -> 从 PROGRAM_DIR 读取 index.html
 //   2) SEA 模式：webshare.exe    -> 从 SEA 内嵌资源读取 index.html
@@ -748,7 +748,7 @@ server.on('error', (err) => {
 
 server.listen(PORT, HOST, () => {
   console.log('=======================================================')
-  console.log('  WebShare')
+  console.log('  LanBridge')
   console.log('  Server started')
   console.log('')
   // SEA 模式预加载 index.html，启动即能发现 asset 缺失问题

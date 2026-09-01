@@ -13,7 +13,7 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Starting web-copy-share...
+echo Starting LanBridge...
 node server.js
 
 if errorlevel 1 (
