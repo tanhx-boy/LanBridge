@@ -4,11 +4,14 @@ cd "$(dirname "$0")"
 
 if ! command -v node >/dev/null 2>&1; then
   echo "======================================================="
-  echo "  未检测到 Node.js，请先安装 Node.js 后再启动"
-  echo "  下载地址: https://nodejs.org/"
+  echo "  Node.js not found. Please install Node.js first."
+  echo "  Download: https://nodejs.org/"
   echo "======================================================="
   exit 1
 fi
 
-echo "Starting LanBridge..."
+echo "======================================================="
+echo "  Starting LanBridge ..."
+echo "======================================================="
+
 exec node server.js

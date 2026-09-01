@@ -1,6 +1,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-[![GitHub release](https://img.shields.io/github/v/release/tanhx-boy/LanBridge)](../../releases)
-[![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](../../releases)
+[![GitHub release](https://img.shields.io/github/v/release/tanhx-boy/LanBridge)](https://github.com/tanhx-boy/LanBridge/releases)
+[![Platform](https://img.shields.io/badge/platform-Windows%20x64-blue)](https://github.com/tanhx-boy/LanBridge/releases)
+
+> ⚠️ **AI 生成声明**：本项目的全部代码与文档由作者与 AI 协作完成，使用 [opencode](https://github.com/sst/opencode) CLI + [openrouter](https://openrouter.ai/) 的免费 API。代码已通过构建与功能测试，但**不保证完全无 bug**，使用前请自行评估与审查。
 
 # LanBridge
 
@@ -43,7 +45,7 @@ LanBridge 是一款**轻便的、基于浏览器**的局域网工具，用于局
 
 ### 方式一：使用预编译 EXE（推荐普通用户）
 
-1. 在 [Releases](../../releases) 下载 `webshare.exe`
+1. 在 [Releases](https://github.com/tanhx-boy/LanBridge/releases) 下载 `webshare.exe`
 2. 双击运行（首次 Windows Defender / 防火墙会弹窗，全部放行）
 3. 浏览器打开 `http://localhost:24496`
 4. 想给同网段其他人用：把 `http://<你的局域网IP>:24496` 发给他们
@@ -325,6 +327,8 @@ error.log           （未捕获异常会写入这里）
 ├── start.bat           # Windows 启动脚本
 ├── start.sh            # Linux / macOS 启动脚本
 ├── LICENSE             # MIT 许可证
+├── README.md           # 本文件
+├── .gitignore          # Git 忽略规则（排除 build 产物、运行时数据等）
 ├── share/              # 共享文件根目录（运行时自动创建）
 └── chat-img/           # 聊天图片目录（运行时自动创建）
 ```
@@ -379,6 +383,6 @@ error.log           （未捕获异常会写入这里）
 
 ## 致谢
 
+- 本项目代码由作者与 AI 协作完成，使用 [opencode](https://github.com/sst/opencode) CLI + [openrouter](https://openrouter.ai/) 的免费 API
 - [Node.js](https://nodejs.org/) — 提供运行时 + SEA 单文件打包能力
-- 零第三方依赖设计受 [zer0mux](https://github.com/gyscos/zstd-rs) 类项目启发
 - 所有贡献者

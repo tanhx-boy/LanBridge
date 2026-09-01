@@ -1,10 +1,9 @@
 @echo off
-chcp 65001 >nul
 
 cd /d "%~dp0"
 
 where node >nul 2>nul
-if errorlevel 1 (
+if %ERRORLEVEL% neq 0 (
   echo =======================================================
   echo   Node.js not found. Please install Node.js first.
   echo   Download: https://nodejs.org/
@@ -13,14 +12,17 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo Starting LanBridge...
+echo =======================================================
+echo   Starting LanBridge ...
+echo =======================================================
+
 node server.js
 
-if errorlevel 1 (
+if %ERRORLEVEL% neq 0 (
   echo =======================================================
-  echo   Failed to start, error code: %errorlevel%
+  echo   Failed to start, error code: %ERRORLEVEL%
   echo =======================================================
   pause
 )
 
-exit /b %errorlevel%
+exit /b %ERRORLEVEL%
