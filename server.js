@@ -97,7 +97,7 @@ const chatHistory = []         // [{ id, time, name, text, images: [url,...] }]
 const CHAT_HISTORY_MAX = 100
 const CHAT_MSG_MAX = 200
 
-// ============ 本机管理：权限、应用层共享剪贴板 ============
+// ============ 本机管理：权限 ============
 
 // 功能权限开关（默认全部开启，保持现有行为）
 const permissions = {
@@ -105,15 +105,8 @@ const permissions = {
   upload: true,
   preview: true,
   hash: true,
-  clipboard: true,
   chat: true,
   speedtest: true,
-}
-
-// 应用层共享剪贴板（双向 slot，仅内存，不落盘）
-const clipboards = {
-  host: { text: '', time: 0 },
-  vm:   { text: '', time: 0 },
 }
 
 function isLocalhost(req) {
@@ -567,9 +560,8 @@ const server = http.createServer((req, res) => {
     const client = { res, name: '匿名' }
     chatClients.add(client)
     res.write('event: history\ndata: ' + JSON.stringify(chatHistory.slice(-CHAT_HISTORY_MAX)) + '\n\n')
-    // 首次连接推送当前权限与剪贴板状态
+    // 首次连接推送当前权限
     res.write('event: permission\ndata: ' + JSON.stringify(permissions) + '\n\n')
-    res.write('event: clipboard-state\ndata: ' + JSON.stringify(clipboards) + '\n\n')
     sseBroadcast('presence', chatPresence())
     const hb = setInterval(() => { try { res.write(': ping\n\n') } catch (e) {} }, 30000)
     req.on('close', () => {
@@ -650,7 +642,7 @@ const server = http.createServer((req, res) => {
     return
   }
 
-  // ============ 系统信息 / 管理 API / 剪贴板 API ============
+  // ============ 系统信息 / 管理 API ============
 
   // GET /api/info  公共（不限 localhost）
   if (req.url === '/api/info') {
@@ -689,7 +681,7 @@ const server = http.createServer((req, res) => {
     if (!isLocalhost(req)) { forbid(res, '仅限本机访问'); return }
     respondJSON(res, 200, {
       success: true,
-      data: { permissions: permissions, clipboards: clipboards },
+      data: { permissions: permissions },
     })
     return
   }
@@ -704,29 +696,6 @@ const server = http.createServer((req, res) => {
       permissions[name] = value
       sseBroadcast('permission', permissions)
       respondJSON(res, 200, { success: true, data: { name, value, permissions } })
-    }).catch(() => respondJSON(res, 400, { success: false, message: '请求体错误' }))
-    return
-  }
-
-  // GET /api/clipboard/:slot
-  if (req.url.startsWith('/api/clipboard/')) {
-    if (!permissions.clipboard) { forbid(res, '剪贴板功能已被禁用'); return }
-    const slot = req.url.slice('/api/clipboard/'.length).split('?')[0]
-    if (!Object.prototype.hasOwnProperty.call(clipboards, slot)) { respondJSON(res, 400, { success: false, message: '未知 slot' }); return }
-    respondJSON(res, 200, { success: true, data: { slot, ...clipboards[slot] } })
-    return
-  }
-
-  // POST /api/clipboard/:slot  body: { text }
-  if (req.method === 'POST' && req.url.startsWith('/api/clipboard/')) {
-    if (!permissions.clipboard) { forbid(res, '剪贴板功能已被禁用'); return }
-    const slot = req.url.slice('/api/clipboard/'.length).split('?')[0]
-    if (!Object.prototype.hasOwnProperty.call(clipboards, slot)) { respondJSON(res, 400, { success: false, message: '未知 slot' }); return }
-    readJsonBody(req).then((data) => {
-      const text = String(data.text || '').slice(0, 20000)
-      clipboards[slot] = { text: text, time: Date.now() }
-      sseBroadcast('clipboard', { slot, text, time: clipboards[slot].time })
-      respondJSON(res, 200, { success: true, data: { slot, time: clipboards[slot].time } })
     }).catch(() => respondJSON(res, 400, { success: false, message: '请求体错误' }))
     return
   }

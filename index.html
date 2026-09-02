@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>正文复制页</title>
+<title>LanBridge</title>
 <style>
   :root {
     --bg: #f4f6f8; --bg-card: #fff; --bg-subtle: #f2f2f7; --bg-input: #f9f9fb;
@@ -67,19 +67,6 @@
   }
   .btn:hover { background: var(--accent-hover); }
   .btn.done { background: var(--green); }
-  .text-block {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    padding: 14px 16px;
-    margin-bottom: 12px;
-    position: relative;
-  }
-  .text-block .block-actions {
-    margin-top: 10px;
-    display: flex;
-    justify-content: flex-end;
-  }
   .toast {
     position: fixed;
     left: 50%;
@@ -295,30 +282,12 @@
     cursor: pointer; display: flex; align-items: center; justify-content: center;
   }
 
-  /* ===== 系统信息 / 剪贴板 / 管理 ===== */
+  /* ===== 系统信息 / 管理 ===== */
   .info-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
   .info-card h2 { font-size: 17px; margin-bottom: 10px; }
   .info-table { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: 13px; }
   .info-table .k { color: var(--text-muted); white-space: nowrap; }
   .info-table .v { color: var(--text); word-break: break-all; user-select: all; }
-  .clipboard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-  @media (max-width: 600px) { .clipboard-grid { grid-template-columns: 1fr; } }
-  .clip-slot { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 8px; padding: 10px; }
-  .clip-slot h3 { font-size: 14px; margin-bottom: 6px; display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-  .clip-slot h3 .time { font-size: 11px; color: var(--text-muted); font-weight: normal; }
-  .clip-slot textarea {
-    width: 100%; min-height: 100px; resize: vertical; border: 1px solid var(--border);
-    border-radius: 6px; padding: 8px 10px; font-size: 13px; font-family: inherit;
-    background: var(--bg-card); color: var(--text); outline: none; box-sizing: border-box;
-  }
-  .clip-slot textarea:focus { border-color: var(--accent-chat); box-shadow: 0 0 0 2px rgba(0,122,255,0.12); }
-  .clip-slot .actions { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
-  .btn-mini { border: 1px solid var(--border); background: var(--bg-card); color: var(--text); border-radius: 5px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
-  .btn-mini:hover { background: var(--bg-subtle); }
-  .btn-mini.primary { background: var(--accent-chat); color: #fff; border-color: var(--accent-chat); }
-  .btn-mini.primary:hover { background: var(--accent-chat-hover); }
-  .btn-mini:disabled { opacity: 0.5; cursor: not-allowed; }
-
   .admin-card { background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; }
   .admin-card h2 { font-size: 17px; margin-bottom: 10px; }
   .perm-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 16px; }
@@ -351,7 +320,7 @@
 <body>
 <div class="page">
   <div class="title-row">
-    <h1>正文复制页</h1>
+    <h1>LanBridge</h1>
     <button class="theme-toggle" id="themeToggle" title="切换深色/浅色模式">☀</button>
   </div>
 
@@ -386,62 +355,9 @@
   </section>
   <!-- ============ 系统信息结束 ============ -->
 
-  <!-- ============ 剪贴板 ============ -->
-  <section class="info-card" id="clipboardCard">
-    <h2>📋 共享剪贴板</h2>
-    <p class="subtitle" style="margin-bottom: 10px;">应用层共享文本，仅内存保存（重启即清空），所有当前连接的页面实时同步</p>
-    <div class="clipboard-grid">
-      <div class="clip-slot">
-        <h3>宿主机 <span class="time" id="clipHostTime"></span></h3>
-        <textarea id="clipHostText" placeholder="在宿主机浏览器写入文本，VM 端会实时看到"></textarea>
-        <div class="actions">
-          <button class="btn-mini primary" id="clipHostWrite">写入</button>
-          <button class="btn-mini" id="clipHostCopy">复制到本机</button>
-          <button class="btn-mini" id="clipHostClear">清空</button>
-        </div>
-      </div>
-      <div class="clip-slot">
-        <h3>虚拟机 <span class="time" id="clipVmTime"></span></h3>
-        <textarea id="clipVmText" placeholder="在 VM 浏览器写入文本，宿主机端会实时看到"></textarea>
-        <div class="actions">
-          <button class="btn-mini primary" id="clipVmWrite">写入</button>
-          <button class="btn-mini" id="clipVmCopy">复制到本机</button>
-          <button class="btn-mini" id="clipVmClear">清空</button>
-        </div>
-      </div>
-    </div>
-  </section>
-  <!-- ============ 剪贴板结束 ============ -->
-
   <!-- ============ 本机管理（仅 localhost 可见，由 JS 渲染） ============ -->
   <div id="adminMount"></div>
   <!-- ============ 本机管理结束 ============ -->
-
-  <p class="subtitle">打开该文件，在下方 &lt;main&gt; 里修改正文内容即可，保存后虚拟机刷新页面生效</p>
-
-  <div class="toolbar">
-    <span class="hint">共 <span id="blockCount">0</span> 段</span>
-    <button class="btn" id="copyAll">全部复制</button>
-  </div>
-
-  <!-- ============ 正文区域：修改这里的内容 ============ -->
-  <!-- 每段放在一个 <section class="text-block"> 里；想加段落就复制一整段，想删就删掉整段 -->
-  <main id="content">
-    <section class="text-block">
-      第二段正文实例：复制按钮会把本段文字复制到剪贴板，虚拟机浏览器同样支持。
-    </section>
-
-    <section class="text-block">
-      第二段正文示例：复制按钮会把本段文字复制到剪贴板，虚拟机浏览器同样支持。
-      <br>1.注意：如果你在虚拟机里使用浏览器访问本页面，复制按钮同样可用。
-      <br>2.注意：如果你在虚拟机里使用浏览器访问本页面，复制按钮同样可用。
-    </section>
-
-    <section class="text-block">
-      第三段正文示例：复制按钮会把本段文字复制到剪贴板，虚拟机浏览器同样支持。
-    </section>
-  </main>
-  <!-- ============ 正文区域结束 ============ -->
 
   <hr style="border:none; border-top:1px solid var(--border); margin:28px 0 20px;">
 
@@ -522,8 +438,6 @@
     <div class="speed-meta" id="ulMeta"></div>
   </div>
   <!-- ============ 网速测试区结束 ============ -->
-
-  <p class="subtitle">提示：编辑保存后，虚拟机里按 Ctrl+F5（强制刷新）即可看到新内容</p>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -600,54 +514,6 @@
     clearTimeout(toastTimer)
     toastTimer = setTimeout(() => el.classList.remove('show'), 1600)
   }
-
-  // 取某段的纯文本（只取直接文本节点，忽略按钮文字，空白归一）
-  function extractText(block) {
-    return Array.from(block.childNodes)
-      .filter(n => n.nodeType === Node.TEXT_NODE)
-      .map(n => n.textContent)
-      .join('')
-      .replace(/\s+/g, ' ')
-      .trim()
-  }
-
-  // 为每段附加复制按钮
-  const blocks = Array.from(document.querySelectorAll('.text-block'))
-  document.getElementById('blockCount').textContent = blocks.length
-
-  blocks.forEach(block => {
-    const wrap = document.createElement('div')
-    wrap.className = 'block-actions'
-    const btn = document.createElement('button')
-    btn.className = 'btn'
-    btn.textContent = '复制'
-    btn.addEventListener('click', () => {
-      const text = extractText(block)
-      if (!text) return
-      if (copyText(text)) {
-        btn.textContent = '已复制✓'
-        btn.classList.add('done')
-        setTimeout(() => {
-          btn.textContent = '复制'
-          btn.classList.remove('done')
-        }, 1500)
-      } else {
-        showToast('复制失败，请手动全选复制')
-      }
-    })
-    wrap.appendChild(btn)
-    block.appendChild(wrap)
-  })
-
-  document.getElementById('copyAll').addEventListener('click', () => {
-    const all = blocks.map(extractText).filter(Boolean).join('\n\n')
-    if (!all) return
-    if (copyText(all)) {
-      showToast('已复制全部内容 ✓')
-    } else {
-      showToast('复制失败，请手动全选复制')
-    }
-  })
 
   // ============ 下载区：目录树分组渲染 + 哈希/预览 ============
   function formatSize(bytes) {
@@ -1371,20 +1237,7 @@
           statusEl.innerHTML = '<span class="online">●</span> ' + data.count + ' 人在线'
         } catch (err) { /* 忽略 */ }
       })
-      // 监听剪贴板/权限变化（不影响聊天）
-      evtSource.addEventListener('clipboard', (e) => {
-        try {
-          const data = JSON.parse(e.data)
-          if (!data || !data.slot) return
-          const ta = document.getElementById('clip' + data.slot + 'Text')
-          const tm = document.getElementById('clip' + data.slot + 'Time')
-          if (ta && document.activeElement !== ta) ta.value = data.text || ''
-          if (tm) {
-            const d = new Date(data.time || 0)
-            tm.textContent = data.time ? d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0') + ':' + d.getSeconds().toString().padStart(2, '0') : ''
-          }
-        } catch (err) { /* 忽略 */ }
-      })
+      // 监听权限变化（不影响聊天）
       evtSource.addEventListener('permission', (e) => {
         try {
           const perms = JSON.parse(e.data)
@@ -1489,12 +1342,12 @@
     })
   })()
 
-  // ============ 系统信息 + 剪贴板 + 本机管理 ============
+  // ============ 系统信息 + 本机管理 ============
   ;(() => {
     const $ = (id) => document.getElementById(id)
     const isLocal = ['localhost', '127.0.0.1', '::1'].includes(location.hostname)
 
-    let permissions = { download: true, upload: true, preview: true, hash: true, clipboard: true, chat: true, speedtest: true }
+    let permissions = { download: true, upload: true, preview: true, hash: true, chat: true, speedtest: true }
     let serverInfo = null
 
     // 加载服务器信息
@@ -1524,49 +1377,12 @@
       } catch (e) { /* 忽略 */ }
     }
 
-    // 剪贴板功能
-    function formatTime(t) { if (!t) return ''; const d = new Date(t); return d.getHours().toString().padStart(2, '0') + ':' + d.getMinutes().toString().padStart(2, '0') + ':' + d.getSeconds().toString().padStart(2, '0') }
-    async function loadClipboard(slot) {
-      try {
-        const resp = await fetch('/api/clipboard/' + slot)
-        const json = await resp.json()
-        if (json.success) {
-          $('clip' + slot + 'Text').value = json.data.text || ''
-          $('clip' + slot + 'Time').textContent = json.data.time ? formatTime(json.data.time) : ''
-        }
-      } catch (e) { /* 忽略 */ }
-    }
-    async function writeClipboard(slot) {
-      const text = $('clip' + slot + 'Text').value
-      try {
-        const resp = await fetch('/api/clipboard/' + slot, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
-        })
-        const json = await resp.json()
-        if (json.success) {
-          $('clip' + slot + 'Time').textContent = formatTime(json.data.time)
-          showToast('已写入')
-        } else showToast('写入失败：' + (json.message || ''))
-      } catch (e) { showToast('写入失败') }
-    }
-    async function copyClipboard(slot) {
-      const text = $('clip' + slot + 'Text').value
-      if (copyText(text)) showToast('已复制到本机剪贴板')
-      else showToast('复制失败')
-    }
-    function clearClipboard(slot) {
-      $('clip' + slot + 'Text').value = ''
-      writeClipboard(slot)
-    }
-
     // 本机管理
     const PERM_LABELS = {
       download: { name: '文件下载', desc: '下载共享目录中的文件' },
       upload: { name: '文件上传', desc: '上传文件到共享目录' },
       preview: { name: '在线预览', desc: '浏览器内联打开文件' },
       hash: { name: 'SHA-256', desc: '计算并复制文件哈希' },
-      clipboard: { name: '共享剪贴板', desc: '跨设备文本共享' },
       chat: { name: '局域网聊天', desc: 'SSE 实时聊天与图片' },
       speedtest: { name: '网速测试', desc: '下载/上传速度测试' },
     }
@@ -1615,18 +1431,8 @@
       } catch (e) { showToast('加载管理状态失败') }
     }
 
-    // 绑定剪贴板事件
-    $('clipHostWrite').onclick = () => writeClipboard('host')
-    $('clipHostCopy').onclick = () => copyClipboard('host')
-    $('clipHostClear').onclick = () => clearClipboard('host')
-    $('clipVmWrite').onclick = () => writeClipboard('vm')
-    $('clipVmCopy').onclick = () => copyClipboard('vm')
-    $('clipVmClear').onclick = () => clearClipboard('vm')
-
     // 启动
     loadInfo()
-    loadClipboard('host')
-    loadClipboard('vm')
     if (isLocal) loadAdmin()
   })()
 </script>
