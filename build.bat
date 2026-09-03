@@ -13,7 +13,7 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo =======================================================
-echo   Building webshare.exe ...
+echo   Building LanBridge.exe ...
 echo =======================================================
 
 REM Node 26+ built-in --build-sea: generate blob + copy node.exe + inject
@@ -30,6 +30,6 @@ REM Clean up SEA temp files
 if exist "sea-prep.blob" del /f /q "sea-prep.blob" >nul 2>nul
 
 echo =======================================================
-echo   Build complete: %~dp0webshare.exe
+echo   Build complete: %~dp0LanBridge.exe
 echo =======================================================
 pause
