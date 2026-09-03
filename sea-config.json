@@ -1,6 +1,6 @@
 {
   "main": "server.js",
-  "output": "webshare.exe",
+  "output": "LanBridge.exe",
   "disableExperimentalSEAWarning": true,
   "assets": {
     "index.html": "index.html"
