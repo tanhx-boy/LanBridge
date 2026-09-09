@@ -1,0 +1,17 @@
+# 构建产物 / 运行时数据
+*.exe
+*.obj
+*.pdb
+*.ilk
+error.log
+
+# 自动生成（由 tools/embed.ps1 产生）
+src/index_html.h
+
+# 运行时目录
+share/
+chat-img/
+
+# 编辑器
+.vs/
+.vscode/
