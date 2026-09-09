@@ -92,10 +92,13 @@ const HOST = '0.0.0.0'
 const SELF_FILES = new Set(['server.js', 'index.html', 'README.md', 'sea-config.json', 'build.bat', 'package.json'])
 
 // 聊天状态：在线连接、最近消息（仅内存）
-const chatClients = new Set() // { res, name }
+const chatClients = new Set() // { res, name, cid }
 const chatHistory = []         // [{ id, time, name, text, images: [url,...] }]
 const CHAT_HISTORY_MAX = 100
 const CHAT_MSG_MAX = 200
+
+// 上传记录（仅内存）：relPath -> { name, cid, time }，用于删除权限判定
+const uploadMeta = new Map()
 
 // ============ 本机管理：权限 ============
 
@@ -190,6 +193,19 @@ function scanTree(dir, depth) {
   }
   // 按修改时间降序（最新放的排前面）
   node.files.sort((a, b) => b.mtimeMs - a.mtimeMs)
+  return node
+}
+
+// 为目录树中每个文件标注 canDelete（请求者为上传者本人或 localhost）
+function annotateTree(node, prefix, cid, isLocal) {
+  for (const f of node.files || []) {
+    const rel = prefix ? prefix + '/' + f.name : f.name
+    const meta = uploadMeta.get(rel)
+    f.canDelete = isLocal || (!!meta && !!cid && meta.cid === cid)
+  }
+  for (const d of node.dirs || []) {
+    annotateTree(d, prefix ? prefix + '/' + d.name : d.name, cid, isLocal)
+  }
   return node
 }
 
@@ -332,9 +348,16 @@ function handleUpload(req, res, raw) {
   req.on('error', () => fail())
   req.on('aborted', () => fail())
   ws.on('error', () => fail())
+  const uploaderCid = String(req.headers['x-client-id'] || '').slice(0, 64)
+  // 昵称经 encodeURIComponent 编码（HTTP 头仅允许 ISO-8859-1），此处解码
+  let uploaderName = String(req.headers['x-visitor-name'] || '')
+  try { uploaderName = decodeURIComponent(uploaderName) } catch (e) { /* 保持原值 */ }
+  uploaderName = uploaderName.slice(0, 40)
   ws.on('finish', () => {
     if (aborted) return
     hashCache.delete(relPath)
+    uploadMeta.set(relPath, { name: uploaderName, cid: uploaderCid, time: Date.now() })
+    sseBroadcast('files-changed', { path: relPath })
     respondJSON(res, 200, { success: true, data: { path: relPath, size } })
   })
   req.pipe(ws)
@@ -411,10 +434,12 @@ const server = http.createServer((req, res) => {
     return
   }
 
-  // 文件清单 API：递归扫描 SHARE_DIR
+  // 文件清单 API：递归扫描 SHARE_DIR，并标注每个文件的删除权限
   if (req.url === '/files') {
+    const cid = String(req.headers['x-client-id'] || '')
+    const tree = annotateTree(scanTree(SHARE_DIR, 0), '', cid, isLocalhost(req))
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
-    res.end(JSON.stringify({ success: true, data: scanTree(SHARE_DIR, 0) }))
+    res.end(JSON.stringify({ success: true, data: tree }))
     return
   }
 
@@ -545,11 +570,47 @@ const server = http.createServer((req, res) => {
     return
   }
 
+  // 删除：DELETE /delete/<路径>（仅上传者本人或 localhost）
+  if (req.method === 'DELETE' && req.url.startsWith('/delete/')) {
+    const raw = decodeURIComponent(req.url.slice('/delete/'.length))
+    const file = resolveShareFile(raw)
+    if (!file) {
+      respondJSON(res, 404, { success: false, message: '文件不存在' })
+      return
+    }
+    const cid = String(req.headers['x-client-id'] || '')
+    const meta = uploadMeta.get(file.name)
+    if (!(isLocalhost(req) || (!!meta && !!cid && meta.cid === cid))) {
+      respondJSON(res, 403, { success: false, message: '只能删除自己上传的文件' })
+      return
+    }
+    try {
+      fs.unlinkSync(file.path)
+    } catch (e) {
+      respondJSON(res, 500, { success: false, message: '删除失败' })
+      return
+    }
+    uploadMeta.delete(file.name)
+    hashCache.delete(file.name)
+    // 清理因此产生的空目录（向上直到 SHARE_DIR）
+    let dir = path.dirname(file.path)
+    while (dir !== SHARE_DIR && dir.startsWith(SHARE_DIR + path.sep)) {
+      try {
+        if (fs.readdirSync(dir).length === 0) { fs.rmdirSync(dir); dir = path.dirname(dir) }
+        else break
+      } catch (e) { break }
+    }
+    sseBroadcast('files-changed', { path: file.name, deleted: true })
+    respondJSON(res, 200, { success: true, data: { path: file.name } })
+    return
+  }
+
   // ============ 实时聊天 ============
 
-  // SSE 聊天事件流：GET /chat/stream
-  if (req.url === '/chat/stream') {
+  // SSE 聊天事件流：GET /chat/stream?cid=...
+  if (req.url === '/chat/stream' || req.url.startsWith('/chat/stream?')) {
     if (!permissions.chat) { forbid(res, '聊天功能已被禁用'); return }
+    const cid = String(new URL(req.url, 'http://x').searchParams.get('cid') || '').slice(0, 64)
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-store',
@@ -557,18 +618,32 @@ const server = http.createServer((req, res) => {
       'X-Accel-Buffering': 'no',
     })
     // 临时名（连入时还没设昵称），客户端连接后可能改名；message 事件以消息内 name 为准
-    const client = { res, name: '匿名' }
+    const client = { res, name: '匿名', cid }
     chatClients.add(client)
     res.write('event: history\ndata: ' + JSON.stringify(chatHistory.slice(-CHAT_HISTORY_MAX)) + '\n\n')
     // 首次连接推送当前权限
     res.write('event: permission\ndata: ' + JSON.stringify(permissions) + '\n\n')
     sseBroadcast('presence', chatPresence())
-    const hb = setInterval(() => { try { res.write(': ping\n\n') } catch (e) {} }, 30000)
+    // 心跳 5 秒：保活 + 让断开的连接尽快触发 close 清理
+    const hb = setInterval(() => { try { res.write(': ping\n\n') } catch (e) {} }, 5000)
     req.on('close', () => {
       clearInterval(hb)
       chatClients.delete(client)
       sseBroadcast('presence', chatPresence())
     })
+    return
+  }
+
+  // 主动离开：POST /chat/leave?cid=...（pagehide 时 sendBeacon），立即移除在线状态
+  if (req.method === 'POST' && (req.url === '/chat/leave' || req.url.startsWith('/chat/leave?'))) {
+    const cid = String(new URL(req.url, 'http://x').searchParams.get('cid') || '')
+    if (cid) {
+      for (const c of chatClients) {
+        if (c.cid === cid) { try { c.res.end() } catch (e) { /* 忽略 */ } }
+      }
+    }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' })
+    res.end('{"success":true}')
     return
   }
 
