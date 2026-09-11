@@ -1,0 +1,11 @@
+// LanBridge - Windows resource script.
+//
+// Resource id 1: Windows picks the lowest-numbered ICON resource as the
+// executable's icon, which is what Explorer / taskbar / shortcuts display.
+// The full multi-size app.ico (16/24/32/48/64/72/96/128/256) is used here;
+// the trimmed favicon.ico served to browsers is embedded separately by
+// tools/embed.ps1.
+//
+// This file is ASCII on purpose - rc.exe reads it as ANSI by default.
+
+1 ICON "app.ico"

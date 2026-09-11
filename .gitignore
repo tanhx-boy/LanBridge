@@ -1,12 +1,17 @@
 # 构建产物 / 运行时数据
 *.exe
 *.obj
+*.res
 *.pdb
 *.ilk
 error.log
 
 # 自动生成（由 tools/embed.ps1 产生）
 src/index_html.h
+src/app_ico.h
+
+# 自动生成（由 tools/make-favicon.ps1 从 app.ico 裁出）
+favicon.ico
 
 # 运行时目录
 share/
@@ -15,3 +20,6 @@ chat-img/
 # 编辑器
 .vs/
 .vscode/
+
+# AI 助手工作目录（本地记忆/日志，不入库）
+.workbuddy/

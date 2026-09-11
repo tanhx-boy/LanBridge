@@ -15,8 +15,11 @@
 #ifndef _WIN32_WINNT
 #define _WIN32_WINNT 0x0A00
 #endif
+// SSE 是长连接：cpp-httplib 在 worker 线程内同步循环调用 chunked provider，
+// 每个在线聊天用户会独占一个线程直到断开。线程池必须显著大于预期并发在线人数，
+// 否则聊天会把文件下载/上传请求一并堵死。SSE 另有 SSE_MAX 硬上限做二次保护。
 #ifndef CPPHTTPLIB_THREAD_POOL_COUNT
-#define CPPHTTPLIB_THREAD_POOL_COUNT 16
+#define CPPHTTPLIB_THREAD_POOL_COUNT 64
 #endif
 
 #include <winsock2.h>
@@ -48,6 +51,7 @@
 #include "httplib.h"
 #include "json.hpp"
 #include "index_html.h"
+#include "app_ico.h"
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -60,19 +64,21 @@ static const size_t CHAT_MSG_MAX = 200;
 static const unsigned long long UPLOAD_MAX = 10ULL * 1024 * 1024 * 1024;   // 10GB
 static const unsigned long long UPLOAD_TEST_MAX = 500ULL * 1024 * 1024;    // 500MB
 static const size_t HASH_CACHE_MAX = 200;
+static const int SSE_MAX = 48;   // 同时在线的 SSE 连接上限（每个占 1 个线程）
 
 // 自身文件：不出现在下载列表，也不可被下载/覆盖
 static const std::set<std::string> SELF_FILES = {
     "server.cpp", "LanBridge.exe", "index.html", "index_html.h", "README.md",
     "build.bat", "embed.ps1", "httplib.h", "json.hpp"};
 
-// 在线预览支持的扩展名
+// 在线预览白名单：仅位图图片，且落盘内容需通过魔数嗅探（见 sniffImageType）。
+// 其余类型一律只提供下载，保存到本机后再打开。
+// 刻意不含 .svg —— SVG 是能内嵌 <script> / <foreignObject> 的 XML，以文档方式打开
+// 会执行脚本，等于把"图片预览"变成存储型 XSS 的载体（upload 默认开启）。
 static const std::unordered_map<std::string, std::string> PREVIEW_TYPES = {
-    {".txt", "text/plain"},   {".md", "text/markdown"}, {".json", "application/json"},
-    {".log", "text/plain"},   {".csv", "text/plain"},   {".ini", "text/plain"},
-    {".png", "image/png"},    {".jpg", "image/jpeg"},   {".jpeg", "image/jpeg"},
-    {".gif", "image/gif"},    {".webp", "image/webp"},  {".svg", "image/svg+xml"},
-    {".bmp", "image/bmp"},    {".ico", "image/x-icon"}, {".pdf", "application/pdf"},
+    {".png", "image/png"},  {".jpg", "image/jpeg"},  {".jpeg", "image/jpeg"},
+    {".gif", "image/gif"},  {".webp", "image/webp"}, {".bmp", "image/bmp"},
+    {".ico", "image/x-icon"},
 };
 
 // ============ 全局路径 ============
@@ -123,6 +129,7 @@ struct ChatClient {
 
 static std::vector<std::shared_ptr<ChatClient>> chatClients;
 static std::mutex chatClientsMutex;
+static std::atomic<int> sseCount{0};   // 活跃 SSE 连接数，每个独占 1 个 worker 线程
 
 // 上传记录（仅内存）：relPath -> { name, cid, time }，用于删除权限判定
 struct UploadMeta {
@@ -169,6 +176,13 @@ static std::string to_lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(),
                  [](unsigned char c) { return (char)std::tolower(c); });
   return s;
+}
+
+// 取小写扩展名（含点），如 "A.PNG" -> ".png"；无扩展名返回空串
+static std::string lower_ext(const std::string &name) {
+  size_t p = name.rfind('.');
+  if (p == std::string::npos || p + 1 >= name.size()) return "";
+  return to_lower(name.substr(p));
 }
 
 static std::string trim(const std::string &s) {
@@ -291,6 +305,28 @@ static bool is_under_real(const fs::path &base, const fs::path &child) {
   return is_under(b, c);
 }
 
+// v2.0.x 及更早版本把聊天图片写在 exe 同目录的 chat-img/，已统一到 share/chat-img/。
+// 启动时做一次性搬迁，避免升级后老图片全部 404。
+static void migrateLegacyChatImg(const fs::path &legacyDir, const fs::path &targetDir) {
+  std::error_code ec;
+  if (!fs::is_directory(legacyDir, ec) || ec) return;
+  if (legacyDir.lexically_normal() == targetDir.lexically_normal()) return;
+  fs::create_directories(targetDir, ec);
+  size_t moved = 0;
+  for (fs::directory_iterator it(legacyDir, ec), end; !ec && it != end; ++it) {
+    std::error_code e2;
+    if (!it->is_regular_file(e2) || e2) continue;
+    fs::path dst = targetDir / it->path().filename();
+    if (fs::exists(dst, e2)) continue;   // 同名不覆盖
+    fs::rename(it->path(), dst, e2);
+    if (!e2) moved++;
+  }
+  if (moved > 0)
+    std::printf("  [migrate] %zu 个聊天图片已迁移到 share/chat-img/\n", moved);
+  std::error_code e3;
+  fs::remove(legacyDir, e3);   // 仅在目录为空时才会成功
+}
+
 // ============ 异常日志 ============
 static void logError(const std::string &tag, const std::string &msg) {
   SYSTEMTIME st;
@@ -364,28 +400,99 @@ static bool isLocalhost(const httplib::Request &req) {
 }
 
 // ============ 系统信息 ============
-static json getLocalIPs() {
-  json arr = json::array();
+// 地址是否值得展示：剔除回环、APIPA（169.254/16，未拿到 DHCP 时出现）、
+// 组播与广播。这些地址对其他设备不可达，列出来只会误导使用者。
+static bool isUsableIPv4(uint32_t ip4) {   // 参数为主机字节序
+  if (ip4 == 0) return false;                            // 0.0.0.0
+  if (ip4 == 0xFFFFFFFFu) return false;                  // 255.255.255.255
+  if ((ip4 & 0xFF000000u) == 0x7F000000u) return false;  // 127.0.0.0/8
+  if ((ip4 & 0xFFFF0000u) == 0xA9FE0000u) return false;  // 169.254.0.0/16
+  if ((ip4 & 0xF0000000u) == 0xE0000000u) return false;  // 224.0.0.0/4
+  return true;
+}
+
+// 虚拟机 / 容器虚拟网卡：地址对局域网物理设备无意义，但"宿主机开服务、虚拟机
+// 来访"这个场景确实有效，所以只降权分组展示，不直接丢弃。
+static bool isVirtualAdapterName(const std::wstring &friendly) {
+  static const wchar_t *kKeywords[] = {L"VMware",  L"VMnet",   L"VirtualBox",
+                                       L"Hyper-V", L"WSL",     L"Loopback",
+                                       L"TAP-Windows", L"虚拟以太网"};
+  for (auto *k : kKeywords)
+    if (friendly.find(k) != std::wstring::npos) return true;
+  return false;
+}
+
+// strict=true 套用完整可用性过滤；strict=false 用于兜底（至少让用户看到网卡）
+static json collectLocalIPs(bool strict) {
+  json phys = json::array(), virt = json::array();
   ULONG size = 0;
   GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, nullptr, nullptr, &size);
-  if (size == 0) return arr;
+  if (size == 0) return phys;
   std::vector<char> buf(size);
   auto *addrs = reinterpret_cast<IP_ADAPTER_ADDRESSES *>(buf.data());
   if (GetAdaptersAddresses(AF_INET, GAA_FLAG_INCLUDE_PREFIX, nullptr, addrs, &size) != NO_ERROR)
-    return arr;
+    return phys;
+
   for (auto *a = addrs; a; a = a->Next) {
     if (a->IfType == IF_TYPE_SOFTWARE_LOOPBACK) continue;
+    if (strict && a->OperStatus != IfOperStatusUp) continue;   // 网卡未启用/未连接
+    std::wstring fname = a->FriendlyName ? a->FriendlyName : L"";
+    bool isVirt = isVirtualAdapterName(fname);
     for (auto *ua = a->FirstUnicastAddress; ua; ua = ua->Next) {
       if (!ua->Address.lpSockaddr) continue;
       if (ua->Address.lpSockaddr->sa_family != AF_INET) continue;
-      char ip[INET_ADDRSTRLEN] = {0};
       auto *sin = reinterpret_cast<sockaddr_in *>(ua->Address.lpSockaddr);
+      if (strict && !isUsableIPv4(ntohl(sin->sin_addr.s_addr))) continue;
+      char ip[INET_ADDRSTRLEN] = {0};
       inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip));
-      arr.push_back({{"name", w_to_u8(a->FriendlyName ? a->FriendlyName : L"")},
-                     {"address", std::string(ip)}});
+      json item = {{"name", w_to_u8(fname)}, {"address", std::string(ip)}, {"virtual", isVirt}};
+      if (isVirt) virt.push_back(item);
+      else phys.push_back(item);
     }
   }
-  return arr;
+  json out = json::array();          // 物理网卡优先，虚拟网卡置底
+  for (auto &i : phys) out.push_back(i);
+  for (auto &i : virt) out.push_back(i);
+  return out;
+}
+
+static json getLocalIPs() {
+  json arr = collectLocalIPs(true);
+  if (!arr.empty()) return arr;
+  // 过滤后为空（如网线已插但未拿到地址）→ 回退到未过滤，避免误报"无 IP"
+  json all = collectLocalIPs(false);
+  for (auto &i : all) i["fallback"] = true;
+  return all;
+}
+
+// 启动打印：物理地址归 LAN，虚拟网卡归 Virtual，避免刷屏与误选
+static void printLocalIPs(const json &ips) {
+  bool fallback = false, hasPhys = false, hasVirt = false;
+  for (auto &ip : ips) {
+    if (ip.value("fallback", false)) fallback = true;
+    if (ip["virtual"].get<bool>()) hasVirt = true;
+    else hasPhys = true;
+  }
+  if (fallback)
+    std::printf("  Note:    未检测到可用局域网地址，以下为全部网卡（可能无法被其他设备访问）\n");
+  if (ips.empty()) {
+    std::printf("  LAN:     (no LAN IP detected)\n");
+    return;
+  }
+  if (hasPhys) {
+    for (auto &ip : ips)
+      if (!ip["virtual"].get<bool>())
+        std::printf("  LAN:     http://%s:%d  (%s)\n", ip["address"].get<std::string>().c_str(),
+                    PORT, ip["name"].get<std::string>().c_str());
+  } else {
+    std::printf("  LAN:     (no LAN IP detected)\n");
+  }
+  if (hasVirt) {
+    for (auto &ip : ips)
+      if (ip["virtual"].get<bool>())
+        std::printf("  Virtual: http://%s:%d  (%s)\n", ip["address"].get<std::string>().c_str(),
+                    PORT, ip["name"].get<std::string>().c_str());
+  }
 }
 
 static std::string hostnameStr() {
@@ -441,6 +548,36 @@ static bool sha256_file(const fs::path &path, std::string &outHex) {
 
 static void fillRandom(char *p, size_t n) {
   BCryptGenRandom(nullptr, reinterpret_cast<PUCHAR>(p), (ULONG)n, BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+}
+
+// ============ 图片魔数嗅探 ============
+// 后缀名可以伪造（把 .exe 改名成 .png 即绕过白名单），所以预览前必须校验真实内容。
+// 返回 true 时把探测到的真实 MIME 写回 mime。
+static bool sniffImageType(const fs::path &path, std::string &mime) {
+  std::ifstream ifs(path, std::ios::binary);
+  if (!ifs) return false;
+  unsigned char b[16] = {0};
+  ifs.read(reinterpret_cast<char *>(b), (std::streamsize)sizeof(b));
+  std::streamsize n = ifs.gcount();
+  if (n < 4) return false;
+  if (n >= 8 && b[0] == 0x89 && b[1] == 'P' && b[2] == 'N' && b[3] == 'G' && b[4] == 0x0D &&
+      b[5] == 0x0A && b[6] == 0x1A && b[7] == 0x0A) {
+    mime = "image/png";
+    return true;
+  }
+  if (b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) { mime = "image/jpeg"; return true; }
+  if (b[0] == 'G' && b[1] == 'I' && b[2] == 'F' && b[3] == '8') { mime = "image/gif"; return true; }
+  if (b[0] == 'B' && b[1] == 'M') { mime = "image/bmp"; return true; }
+  if (n >= 12 && b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F' && b[8] == 'W' &&
+      b[9] == 'E' && b[10] == 'B' && b[11] == 'P') {
+    mime = "image/webp";
+    return true;
+  }
+  if (b[0] == 0x00 && b[1] == 0x00 && b[2] == 0x01 && b[3] == 0x00) {
+    mime = "image/x-icon";
+    return true;
+  }
+  return false;
 }
 
 // ============ 外网 TCP 握手测延迟 ============
@@ -554,12 +691,16 @@ static json scanTree(const fs::path &dir, int depth) {
   return node;
 }
 
-// 为目录树中每个文件标注 canDelete（请求者为上传者本人或 localhost）
-static void annotateTree(json &node, const std::string &prefix, const std::string &cid,
-                         bool isLocal) {
+// 为目录树中每个文件标注 canDelete（上传者本人或 localhost）与 previewable
+// （图片且预览功能未被禁用）。前端只依这两个标志渲染按钮，避免前后端白名单漂移。
+// previewable 会做一次魔数嗅探，确保改名伪装的"图片"不会出现无效的预览按钮；
+// 嗅探只对扩展名命中的文件进行，命中前不产生额外 I/O。
+static void annotateTree(json &node, const std::string &prefix, const fs::path &dirPath,
+                         const std::string &cid, bool isLocal) {
+  const bool previewOn = perms.preview.load();
   for (auto &f : node["files"]) {
-    std::string rel = prefix.empty() ? f["name"].get<std::string>()
-                                     : prefix + "/" + f["name"].get<std::string>();
+    std::string nm = f["name"].get<std::string>();
+    std::string rel = prefix.empty() ? nm : prefix + "/" + nm;
     bool can = isLocal;
     if (!can && !cid.empty()) {
       std::lock_guard<std::mutex> lk(uploadMetaMutex);
@@ -567,11 +708,17 @@ static void annotateTree(json &node, const std::string &prefix, const std::strin
       can = (it != uploadMeta.end() && it->second.cid == cid);
     }
     f["canDelete"] = can;
+    bool prev = false;
+    if (previewOn && PREVIEW_TYPES.count(lower_ext(nm))) {
+      std::string mime;
+      prev = sniffImageType(dirPath / u8_to_w(nm), mime);
+    }
+    f["previewable"] = prev;
   }
   for (auto &d : node["dirs"]) {
-    std::string sub = prefix.empty() ? d["name"].get<std::string>()
-                                     : prefix + "/" + d["name"].get<std::string>();
-    annotateTree(d, sub, cid, isLocal);
+    std::string dn = d["name"].get<std::string>();
+    std::string sub = prefix.empty() ? dn : prefix + "/" + dn;
+    annotateTree(d, sub, dirPath / u8_to_w(dn), cid, isLocal);
   }
 }
 
@@ -637,12 +784,15 @@ int main() {
     DWORD n = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     PROGRAM_DIR = fs::path(std::wstring(exePath, n)).parent_path();
     SHARE_DIR = PROGRAM_DIR / L"share";
-    CHAT_IMG_DIR = PROGRAM_DIR / L"chat-img";
+    // 聊天图片必须落在 share/ 之内：上传端走通用 /upload/chat-img/ 接口，实际
+    // 会落到 SHARE_DIR/chat-img，读取端必须指向同一处，否则图片一律 404。
+    CHAT_IMG_DIR = SHARE_DIR / L"chat-img";
     LOG_FILE = PROGRAM_DIR / L"error.log";
 
     std::error_code ec;
     fs::create_directories(SHARE_DIR, ec);
     fs::create_directories(CHAT_IMG_DIR, ec);
+    migrateLegacyChatImg(PROGRAM_DIR / L"chat-img", CHAT_IMG_DIR);
 
     // 初始化 Winsock
     WSADATA wsa;
@@ -662,11 +812,22 @@ int main() {
     svr.Get("/", serveIndex);
     svr.Get("/index.html", serveIndex);
 
+    // ---------- 站点图标 ----------
+    // 嵌入的是从 app.ico 裁出的 16/24/32/48 子集（约 17KB），完整 9 尺寸的 app.ico
+    // 只作为 exe 资源；否则一个 422KB 的图标会在 exe 里重复存一份，网页也要多传。
+    // 内容稳定不变，可以放心长缓存。
+    svr.Get("/favicon.ico", [](const httplib::Request &, httplib::Response &res) {
+      res.set_header("Cache-Control", "public, max-age=604800");
+      res.set_header("X-Content-Type-Options", "nosniff");
+      res.set_content(reinterpret_cast<const char *>(APP_ICON), (size_t)APP_ICON_LEN,
+                      "image/x-icon");
+    });
+
     // ---------- 文件清单 ----------
     svr.Get("/files", [](const httplib::Request &req, httplib::Response &res) {
       std::string cid = req.get_header_value("X-Client-Id");
       json tree = scanTree(SHARE_DIR, 0);
-      annotateTree(tree, "", cid, isLocalhost(req));
+      annotateTree(tree, "", SHARE_DIR, cid, isLocalhost(req));
       respondJSON(res, 200, json{{"success", true}, {"data", tree}});
     });
 
@@ -751,6 +912,12 @@ int main() {
         respondJSON(res, 403, json{{"success", false}, {"message", "不能覆盖服务自身文件"}});
         return;
       }
+      // chat-img 是聊天图片专用目录（不在文件列表中显示），只接收图片，
+      // 否则它会变成"传得进去、列表里看不见"的隐蔽通道
+      if (segs[0] == "chat-img" && !PREVIEW_TYPES.count(lower_ext(segs.back()))) {
+        respondJSON(res, 415, json{{"success", false}, {"message", "聊天图片仅支持图片格式"}});
+        return;
+      }
       fs::path full = SHARE_DIR;
       for (auto &seg : segs) full /= u8_to_w(seg);
       if (!is_under(SHARE_DIR, full)) {
@@ -818,15 +985,22 @@ int main() {
         res.set_content("文件不存在或不在共享目录", "text/plain; charset=utf-8");
         return;
       }
+      // 在线预览仅限图片：先按扩展名快速拒绝，再用魔数确认内容真的是图片
       std::string ext = to_lower(w_to_u8(f->path.extension().wstring()));
-      auto it = PREVIEW_TYPES.find(ext);
-      if (it == PREVIEW_TYPES.end()) {
-        respondJSON(res, 415, json{{"success", false}, {"message", "该类型不支持在线预览"}});
+      if (!PREVIEW_TYPES.count(ext)) {
+        respondJSON(res, 415,
+                    json{{"success", false}, {"message", "仅图片支持在线预览，请下载后打开"}});
         return;
       }
-      std::string ct = it->second;
-      if (ct.rfind("text/", 0) == 0) ct += "; charset=utf-8";
+      std::string ct;
+      if (!sniffImageType(f->path, ct)) {
+        respondJSON(res, 415,
+                    json{{"success", false}, {"message", "文件内容不是有效图片，请下载后打开"}});
+        return;
+      }
+      // nosniff: 阻止浏览器把伪装成图片的文件再当 HTML/脚本解析
       res.set_header("Cache-Control", "no-store");
+      res.set_header("X-Content-Type-Options", "nosniff");
       std::string base = w_to_u8(f->path.filename().wstring());
       if (!serveFileStream(res, f->path, f->size, ct, contentDisposition(base, false))) {
         res.status = 500;
@@ -922,6 +1096,14 @@ int main() {
     // ---------- 聊天 SSE ----------
     svr.Get("/chat/stream", [](const httplib::Request &req, httplib::Response &res) {
       if (!perms.chat.load()) { forbid(res, "聊天功能已被禁用"); return; }
+      // 原子占位：fetch_add 返回旧值，旧值已达上限即超限，回退并拒绝。
+      // 每个 SSE 连接独占一个 worker 线程，必须在此设闸保护线程池。
+      if (sseCount.fetch_add(1) >= SSE_MAX) {
+        sseCount.fetch_sub(1);
+        respondJSON(res, 503,
+                    json{{"success", false}, {"message", "在线人数已达上限，请稍后重试"}});
+        return;
+      }
       auto client = std::make_shared<ChatClient>();
       client->cid = req.get_param_value("cid");
       {
@@ -958,6 +1140,7 @@ int main() {
           },
           [client](bool) {
             client->alive = false;
+            sseCount.fetch_sub(1);   // 唯一回收点：正常与异常断开都会走到这里
             {
               std::lock_guard<std::mutex> lk(chatClientsMutex);
               chatClients.erase(std::remove(chatClients.begin(), chatClients.end(), client),
@@ -1084,9 +1267,13 @@ int main() {
       }
       unsigned long long sz = fs::file_size(full, ec);
       std::string base = w_to_u8(full.filename().wstring());
+      // 给真实图片 MIME：部分浏览器/代理对 octet-stream 不做内联渲染
+      std::string ct = "application/octet-stream";
+      auto mt = PREVIEW_TYPES.find(lower_ext(base));
+      if (mt != PREVIEW_TYPES.end()) ct = mt->second;
       res.set_header("Cache-Control", "public, max-age=3600");
-      if (!serveFileStream(res, full, sz, "application/octet-stream",
-                           contentDisposition(base, false))) {
+      res.set_header("X-Content-Type-Options", "nosniff");
+      if (!serveFileStream(res, full, sz, ct, contentDisposition(base, false))) {
         res.status = 500;
         res.set_content("读取失败", "text/plain; charset=utf-8");
       }
@@ -1105,7 +1292,6 @@ int main() {
           {"arch", "x86"},
 #endif
           {"cpus", cpuCount()},
-          {"nodeVersion", std::string("C++/MSVC ") + std::to_string(_MSC_VER)},
           {"permissions", permsJson()}};
       respondJSON(res, 200, json{{"success", true}, {"data", info}});
     });
@@ -1172,22 +1358,13 @@ int main() {
     }
     std::printf("  Server started\n\n");
     std::printf("  Local:   http://localhost:%d\n", PORT);
-    json ips = getLocalIPs();
-    if (!ips.empty()) {
-      for (auto &ip : ips) {
-        std::printf("  LAN:     http://%s:%d  (%s)\n", ip["address"].get<std::string>().c_str(),
-                    PORT, ip["name"].get<std::string>().c_str());
-      }
-    } else {
-      std::printf("  LAN:     (no LAN IP detected)\n");
-    }
+    printLocalIPs(getLocalIPs());
     std::printf("  Share:   %s\n", w_to_u8(SHARE_DIR.wstring()).c_str());
     std::printf("  Chat:    %s\n", w_to_u8(CHAT_IMG_DIR.wstring()).c_str());
     std::printf("\n");
-    std::printf("  Tip: do NOT click URLs in this window - right-click to copy,\n");
-    std::printf("       or open browser and type the address manually.\n");
-    std::printf("       Press Ctrl+C in this window to stop the server.\n");
-    std::printf("  提示: VM 网络需为桥接模式；Windows 防火墙若拦截请放行端口 %d\n", PORT);
+    std::printf("  提示: 请勿直接点击本窗口中的链接，右键复制地址，或手动在浏览器地址栏输入\n");
+    std::printf("        在本窗口按 Ctrl+C 可停止服务\n");
+    std::printf("        VM 网络需为桥接模式；Windows 防火墙若拦截请放行端口 %d\n", PORT);
     std::printf("=======================================================\n");
     std::fflush(stdout);
 

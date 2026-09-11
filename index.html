@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>LanBridge</title>
+<!-- ?v= 是缓存破坏标记：浏览器把 favicon 与 URL 绑定，改 URL 可强制重新拉取。
+     换图标后把这个数字加一即可。服务端按路径匹配，忽略 query。 -->
+<link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
 <style>
   :root {
     --bg: #f4f6f8; --bg-card: #fff; --bg-subtle: #f2f2f7; --bg-input: #f9f9fb;
@@ -274,6 +277,27 @@
     padding: 12px 14px; background: var(--bg-subtle); border: 1px solid var(--border); border-radius: 10px;
     font-size: 12px; color: var(--text-dim); max-width: 220px;
   }
+  .chat-lightbox {
+    position: fixed; top: 0; right: 0; bottom: 0; left: 0; z-index: 9999;
+    display: none; align-items: center; justify-content: center; padding: 32px;
+    background: rgba(0,0,0,0.82); cursor: zoom-out;
+  }
+  .chat-lightbox.open { display: flex; }
+  .chat-lightbox img {
+    max-width: 100%; max-height: 100%; object-fit: contain;
+    border-radius: 8px; cursor: default;
+  }
+  .chat-lightbox-close {
+    position: absolute; top: 16px; right: 20px; width: 36px; height: 36px;
+    border-radius: 50%; border: none; cursor: pointer; font-size: 18px; line-height: 1;
+    background: rgba(255,255,255,0.16); color: #fff;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .chat-lightbox-close:hover { background: rgba(255,255,255,0.3); }
+  .chat-lightbox-tip {
+    position: absolute; bottom: 18px; left: 0; right: 0; text-align: center;
+    font-size: 12px; color: rgba(255,255,255,0.72); pointer-events: none;
+  }
   #chatForm {
     display: flex; gap: 8px; padding: 10px 12px; background: var(--bg-input); align-items: center;
   }
@@ -374,7 +398,6 @@
       <span class="k">端口</span><span class="v" id="infoPort">-</span>
       <span class="k">主机名</span><span class="v" id="infoHost">-</span>
       <span class="k">操作系统</span><span class="v" id="infoPlatform">-</span>
-      <span class="k">Node.js</span><span class="v" id="infoNode">-</span>
       <span class="k">当前地址</span><span class="v" id="infoUrl">-</span>
       <span class="k">客户端 IP</span><span class="v" id="infoClientIp">-</span>
       <span class="k">浏览器</span><span class="v" id="infoUA">-</span>
@@ -592,7 +615,7 @@
     const out = []
     function walk(node, prefix, topGroup) {
       for (const f of node.files || []) {
-        out.push({ group: topGroup || '根目录', path: prefix ? prefix + '/' + f.name : f.name, name: f.name, size: f.size, canDelete: !!f.canDelete })
+        out.push({ group: topGroup || '根目录', path: prefix ? prefix + '/' + f.name : f.name, name: f.name, size: f.size, canDelete: !!f.canDelete, previewable: !!f.previewable })
       }
       for (const d of node.dirs || []) {
         walk(d, prefix ? prefix + '/' + d.name : d.name, topGroup || d.name)
@@ -657,7 +680,9 @@
     prevBtn.style.textDecoration = 'none'
     actions.appendChild(dl)
     actions.appendChild(hashBtn)
-    actions.appendChild(prevBtn)
+    // 仅图片提供在线预览（previewable 由服务端 annotateTree 下发，已含预览权限开关状态）；
+    // 其余类型一律下载到本机后再打开
+    if (f.previewable) actions.appendChild(prevBtn)
     if (f.canDelete) {
       const delBtn = document.createElement('button')
       delBtn.className = 'btn danger'
@@ -1349,6 +1374,7 @@
             img.src = imgUrl
             img.loading = 'lazy'
             img.onerror = () => { img.alt = '图片加载失败'; img.style.border = '1px solid var(--border)'; img.style.padding = '8px'; img.style.height = 'auto' }
+            img.addEventListener('click', () => openLightbox(imgUrl))
             wrap2.appendChild(img)
 
             // 复制按钮
@@ -1398,8 +1424,67 @@
       requestAnimationFrame(() => { messagesEl.scrollTop = messagesEl.scrollHeight })
     }
 
+    // ---- 图片放大预览 ----
+    // 懒初始化单例：DOM 首次点击时才创建并挂到 body，既避免被祖先元素的
+    // transform / filter 困住 fixed 定位，也避开静态 DOM 与脚本的加载顺序问题。
+    let lightboxEl = null
+    let lightboxImg = null
+    function ensureLightbox() {
+      if (lightboxEl) return lightboxEl
+      const box = document.createElement('div')
+      box.className = 'chat-lightbox'
+      box.setAttribute('role', 'dialog')
+      box.setAttribute('aria-modal', 'true')
+      box.setAttribute('aria-label', '图片预览')
+
+      const tip = document.createElement('div')
+      tip.className = 'chat-lightbox-tip'
+      tip.textContent = '点击空白处或按 Esc 关闭'
+
+      const closeBtn = document.createElement('button')
+      closeBtn.type = 'button'
+      closeBtn.className = 'chat-lightbox-close'
+      closeBtn.textContent = '×'
+      closeBtn.setAttribute('aria-label', '关闭')
+
+      const img = document.createElement('img')
+      img.alt = '图片预览'
+      img.onload = () => { tip.textContent = '点击空白处或按 Esc 关闭' }
+      img.onerror = () => { tip.textContent = '图片加载失败（文件可能已被删除）' }
+      img.addEventListener('click', (e) => e.stopPropagation())
+
+      box.appendChild(closeBtn)
+      box.appendChild(img)
+      box.appendChild(tip)
+      box.addEventListener('click', closeLightbox)
+      document.body.appendChild(box)
+
+      lightboxEl = box
+      lightboxImg = img
+      return box
+    }
+    function openLightbox(src) {
+      ensureLightbox()
+      lightboxImg.src = src
+      lightboxEl.classList.add('open')
+      document.body.style.overflow = 'hidden'
+    }
+    function closeLightbox() {
+      if (!lightboxEl || !lightboxEl.classList.contains('open')) return
+      lightboxEl.classList.remove('open')
+      lightboxImg.removeAttribute('src')
+      document.body.style.overflow = ''
+    }
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' || e.key === 'Esc') closeLightbox()
+    })
+
     // SSE 连接
+    // 每个在线连接会独占服务端一个 worker 线程，服务端有并发上限（SSE_MAX）。
+    // 超限时返回 503，而 EventSource 默认每 3 秒无限重试 —— 那只会让所有人一起
+    // 撞墙。故改为失败退避：连续失败 3 次即断开，30 秒后再试一次。
     let evtSource = null
+    let sseFailCount = 0
     function connectSSE() {
       if (evtSource) evtSource.close()
       evtSource = new EventSource('/chat/stream?cid=' + encodeURIComponent(CLIENT_ID))
@@ -1439,11 +1524,19 @@
       })
       // 文件列表变化（上传后其他浏览器即时同步）
       evtSource.addEventListener('files-changed', () => loadDownloads())
-      // SSE 连通 → 停止轮询兜底
-      evtSource.onopen = () => { stopFilesPolling() }
+      // SSE 连通 → 停止轮询兜底，并清零失败计数
+      evtSource.onopen = () => { sseFailCount = 0; stopFilesPolling() }
       evtSource.onerror = () => {
-        statusEl.textContent = '连接断开，正在重连…'
+        sseFailCount++
         startFilesPolling()
+        if (sseFailCount >= 3) {
+          // 连续失败：主动断开并退避 30 秒，避免无脑重试撞服务端上限
+          evtSource.close()
+          statusEl.textContent = '实时连接不可用，已切换为低频模式'
+          setTimeout(() => { sseFailCount = 0; connectSSE() }, 30000)
+          return
+        }
+        statusEl.textContent = '连接断开，正在重连…'
       }
     }
     connectSSE()
@@ -1546,11 +1639,12 @@
         if (!json.success) return
         serverInfo = json.data
         permissions = json.data.permissions
-        $('infoIps').textContent = (json.data.localIPs || []).map(i => i.address).join(', ') || '(无)'
+        $('infoIps').textContent = (json.data.localIPs || [])
+          .map(i => i.address + (i.virtual ? ' (虚拟网卡)' : ''))
+          .join(', ') || '(无)'
         $('infoPort').textContent = json.data.port
         $('infoHost').textContent = json.data.hostname
         $('infoPlatform').textContent = json.data.platform + ' / ' + json.data.arch + ' (CPU×' + json.data.cpus + ')'
-        $('infoNode').textContent = json.data.nodeVersion
         // 当前访问 URL（用客户端视角）
         $('infoUrl').textContent = location.href
       } catch (e) { /* 忽略 */ }
@@ -1569,7 +1663,7 @@
     const PERM_LABELS = {
       download: { name: '文件下载', desc: '下载共享目录中的文件' },
       upload: { name: '文件上传', desc: '上传文件到共享目录' },
-      preview: { name: '在线预览', desc: '浏览器内联打开文件' },
+      preview: { name: '在线预览', desc: '浏览器内联查看图片' },
       hash: { name: 'SHA-256', desc: '计算并复制文件哈希' },
       chat: { name: '局域网聊天', desc: 'SSE 实时聊天与图片' },
       speedtest: { name: '网速测试', desc: '下载/上传速度测试' },
